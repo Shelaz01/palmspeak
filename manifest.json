@@ -1,10 +1,36 @@
 {
-    "manifest_version": 3,
-    "name": "Hello Extensions",
-    "description": "Base Level Extension",
-    "version": "1.0",
-    "action": {
-      "default_popup": "hello.html",
-      "default_icon": "img.JPG"
+  "manifest_version": 3,
+  "name": "PalmSpeak",
+  "version": "1.0",
+  "description": "A browser extension for translating sign language in video calls.",
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "action": {
+    "default_popup": "interface.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
     }
-  }
+  },
+  "permissions": [],
+  "host_permissions": [],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles.css", "script.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

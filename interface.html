@@ -1,6 +1,39 @@
-<html>
-  <body>
-    <h1>Hello Extensions</h1>
-    <script src="popup.js"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Heading directly in the body -->
+        <h2 class="title">PalmSpeak</h2>
+        <div class="control-panel">
+            <div class="switch-group">
+                <label class="switch-label">Turn On</label>
+                <label class="switch">
+                    <input id="turn-on" type="checkbox">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="switch-group">
+                <label class="switch-label">ASL Mode</label>
+                <label class="switch">
+                    <input id="asl-switch" type="checkbox" disabled>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="switch-group">
+                <label class="switch-label">ZSL Mode</label>
+                <label class="switch">
+                    <input id="zsl-switch" type="checkbox" disabled>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
 </html>
