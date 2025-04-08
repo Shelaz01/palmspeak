@@ -5,10 +5,12 @@
   "version": "1.0",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "scripting"
   ],
   "host_permissions": [
-    "https://teams.live.com/*"
+    "https://teams.live.com/*",
+    "https://teams.microsoft.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -16,9 +18,11 @@
   "content_scripts": [
     {
       "matches": [
-        "https://teams.live.com/*"
+        "https://teams.live.com/*",
+        "https://teams.microsoft.com/*"
       ],
-      "js": ["content.js"]
+      "js": ["tensorflow.js","content.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
@@ -33,5 +37,11 @@
     "16": "images/icon16.png",
     "48": "images/icon48.png",
     "128": "images/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["asl_alphabet_tfjs/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

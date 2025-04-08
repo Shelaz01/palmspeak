@@ -1,63 +1,41 @@
-/* General Body Styling */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    border-radius: 20px;
-    background: linear-gradient(to bottom, #a7c7e7, #8fbdff); /* Gradient blue background */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
+    width: 300px;
 }
 
-/* Container to Center Content */
 .container {
-    background-color: #4b8fd4; /* Light blue background */
-    border-radius: 20px; /* Rounded corners for the container */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    padding: 30px;
-    width: 350px;
-    text-align: center;
+    padding: 15px;
 }
 
-/* Title Styling (now a heading) */
 .title {
-    font-size: 28px;
-    color: white;
-    margin-bottom: 20px;
-    font-weight: bold;
+    text-align: center;
+    color: #333;
+    margin-top: 0;
 }
 
-/* Control Panel Styling */
 .control-panel {
-    background: #5fa0d3; /* Lighter blue background */
-    border-radius: 15px;
-    padding: 20px;
-    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
 }
 
-/* Switch Group (Label + Switch) Styling */
 .switch-group {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    margin: 15px 0;
 }
 
-/* Switch Label Styling */
 .switch-label {
-    font-weight: bold;
-    color: white;
-    margin-right: 15px;
-    flex: 1;
+    font-size: 14px;
 }
 
-/* Switch Styling */
 .switch {
     position: relative;
     display: inline-block;
     width: 50px;
-    height: 25px;
+    height: 24px;
 }
 
 .switch input {
@@ -74,33 +52,85 @@ body {
     right: 0;
     bottom: 0;
     background-color: #ccc;
-    transition: 0.4s;
-    border-radius: 15px;
+    transition: .4s;
+    border-radius: 24px;
 }
 
 .slider:before {
     position: absolute;
     content: "";
-    height: 18px;
-    width: 18px;
+    height: 16px;
+    width: 16px;
     left: 4px;
     bottom: 4px;
     background-color: white;
-    transition: 0.4s;
+    transition: .4s;
     border-radius: 50%;
 }
 
-/* Checked State of the Switch */
 input:checked + .slider {
-    background-color: #4caf50; /* Green when checked */
+    background-color: #2196F3;
+}
+
+input:disabled + .slider {
+    background-color: #e0e0e0;
+    cursor: not-allowed;
 }
 
 input:checked + .slider:before {
-    transform: translateX(25px);
+    transform: translateX(26px);
 }
 
-/* Disabled Switch (Grayed Out) */
-.switch input:disabled + .slider {
-    background-color: #bbb;
-    cursor: not-allowed;
+.translation-display {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.translation-display h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #555;
+}
+
+#translation-text {
+    min-height: 60px;
+    font-size: 16px;
+    word-wrap: break-word;
+}
+
+.capture-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.capture-button {
+    padding: 8px 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    width: 100%;
+}
+
+.capture-button.capturing {
+    background-color: #f44336;
+}
+
+.capture-button:hover {
+    opacity: 0.9;
+}
+
+.status {
+    font-size: 12px;
+    color: #666;
+    margin: 0;
+    text-align: center;
 }
