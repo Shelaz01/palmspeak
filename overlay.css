@@ -1,0 +1,145 @@
+/* PalmSpeak ASL Translator overlay styles */
+
+#palmspeak-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 300px;
+  z-index: 9999;
+  opacity: 0.9;
+  transition: opacity 0.3s ease;
+}
+
+#palmspeak-overlay:hover {
+  opacity: 1;
+}
+
+.palmspeak-container {
+  background-color: rgba(30, 30, 30, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  color: white;
+}
+
+.palmspeak-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: rgba(15, 15, 15, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.palmspeak-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.palmspeak-button {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.palmspeak-button:hover {
+  background-color: #0d8aee;
+}
+
+.palmspeak-button.active {
+  background-color: #f44336;
+}
+
+.palmspeak-button.active:hover {
+  background-color: #e53935;
+}
+
+.palmspeak-content {
+  padding: 15px;
+}
+
+.palmspeak-prediction {
+  font-size: 18px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.palmspeak-text {
+  min-height: 60px;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 16px;
+  word-wrap: break-word;
+  line-height: 1.5;
+}
+
+/* Minimize button and state */
+.palmspeak-minimize {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.7);
+  background: none;
+  border: none;
+  font-size: 16px;
+  padding: 0 5px;
+  margin-left: 5px;
+}
+
+.palmspeak-minimize:hover {
+  color: white;
+}
+
+.palmspeak-minimized .palmspeak-content {
+  display: none;
+}
+
+/* Platform-specific adjustments */
+/* For Teams */
+.teams-frame #palmspeak-overlay {
+  bottom: 80px; /* Avoid overlap with Teams controls */
+}
+
+/* For Zoom */
+.zoom-frame #palmspeak-overlay {
+  bottom: 70px; /* Avoid overlap with Zoom controls */
+}
+
+/* Responsive adjustments for different screen sizes */
+@media (max-width: 768px) {
+  #palmspeak-overlay {
+    width: 250px;
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .palmspeak-prediction {
+    font-size: 16px;
+    padding: 8px;
+  }
+  
+  .palmspeak-text {
+    min-height: 50px;
+    font-size: 14px;
+  }
+}
+
+/* Animation for new detection */
+@keyframes flash {
+  0% { background-color: rgba(33, 150, 243, 0.4); }
+  100% { background-color: rgba(0, 0, 0, 0.2); }
+}
+
+.palmspeak-prediction.flash {
+  animation: flash 0.5s ease-out;
+}

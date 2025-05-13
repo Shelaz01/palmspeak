@@ -1,434 +1,371 @@
-// Add to the top of your content.js file
-let aslModel = null;
-let isModelLoaded = false;
-let lastPredictions = [];
-let predictionHistory = [];
-const CONFIDENCE_THRESHOLD = 0.7; // Minimum confidence to accept a prediction
-const HISTORY_SIZE = 5; // Number of predictions to maintain for smoothing
+// Content script for processing frames and managing overlay
+// This version removes TensorFlow.js dependency and uses the Flask API instead
 
-// Function to load the ASL TensorFlow.js model
-async function loadASLModel() {
-    try {
-        console.log("PalmSpeak: Loading ASL model...");
-        // Load the model from the extension's directory
-        aslModel = await tf.loadLayersModel(chrome.runtime.getURL('asl_alphabet_tfjs/model.json'));
-        console.log("PalmSpeak: ASL model loaded successfully");
-        isModelLoaded = true;
-        return true;
-    } catch (error) {
-        console.error("PalmSpeak: Failed to load ASL model:", error);
-        return false;
-    }
+// Global variables
+let overlay = null;
+let predictionElement = null;
+let toggleButton = null;
+let isRecognizing = false;
+let captureStream = null;
+let videoElement = null;
+let captureInterval = null;
+let letterHistory = [];
+let translatedText = "";
+const MAX_HISTORY = 5; // Number of predictions to keep for smoothing
+const FRAME_INTERVAL = 200; // Process frames every 200ms (5 FPS)
+
+// Initialize content script
+function initialize() {
+  console.log("PalmSpeak: Content script initializing");
+  
+  // Create and inject overlay
+  createOverlay();
+  
+  // Listen for messages from background script
+  setupMessageListeners();
+  
+  console.log("PalmSpeak: Content script initialized successfully");
 }
 
-// Process a frame with the ASL model
-async function processFrameWithASLModel(imageData) {
-    if (!isModelLoaded || !aslModel) {
-        console.warn("PalmSpeak: Model not loaded yet");
-        return null;
-    }
+// Create and inject the UI overlay
+function createOverlay() {
+  overlay = document.createElement('div');
+  overlay.id = 'palmspeak-overlay';
+  overlay.innerHTML = `
+    <div class="palmspeak-container">
+      <div class="palmspeak-header">
+        <h3>PalmSpeak ASL Translator</h3>
+        <button id="palmspeak-toggle" class="palmspeak-button">Start Recognition</button>
+      </div>
+      <div class="palmspeak-content">
+        <div id="palmspeak-prediction" class="palmspeak-prediction">Ready</div>
+        <div id="palmspeak-text" class="palmspeak-text"></div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  // Store DOM elements and add event listeners
+  toggleButton = document.getElementById('palmspeak-toggle');
+  predictionElement = document.getElementById('palmspeak-prediction');
+  
+  toggleButton.addEventListener('click', toggleRecognition);
+}
+
+// Start screen capture using getDisplayMedia
+async function startScreenCapture() {
+  try {
+    updateStatus("Requesting screen access...");
     
-    try {
-        // Create an image element from the data URL
-        const img = new Image();
-        img.src = imageData;
-        
-        await new Promise(resolve => {
-            img.onload = resolve;
-        });
-        
-        // Create a canvas for preprocessing
-        const canvas = document.createElement('canvas');
-        // Most models expect specific dimensions - adjust these to match your model
-        canvas.width = 224;  // Typical model input size
-        canvas.height = 224; // Typical model input size
-        const ctx = canvas.getContext('2d');
-        
-        // Draw and resize the image to the expected dimensions
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // Get the image data
-        const imageDataResized = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Preprocess the image data to match your model's expected input
-        // This may vary based on how your model was trained
-        const tensor = tf.browser.fromPixels(imageDataResized)
-            .toFloat()
-            .div(255.0)  // Normalize to [0,1]
-            .expandDims(0); // Add batch dimension
-        
-        // Make prediction
-        const predictions = await aslModel.predict(tensor).data();
-        
-        // Get the class names (alphabet letters)
-        const classNames = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-        
-        // Convert to array of {letter, probability}
-        const results = Array.from(predictions).map((prob, i) => ({
-            letter: classNames[i],
-            probability: prob
-        }));
-        
-        // Sort by probability (highest first)
-        results.sort((a, b) => b.probability - a.probability);
-        
-        // Store the top prediction
-        const topPrediction = results[0];
-        
-        // Only consider predictions above threshold
-        if (topPrediction.probability >= CONFIDENCE_THRESHOLD) {
-            // Add to history
-            predictionHistory.push(topPrediction.letter);
-            if (predictionHistory.length > HISTORY_SIZE) {
-                predictionHistory.shift();
-            }
-            
-            // Simple smoothing - use most common letter in recent history
-            const counts = {};
-            let maxLetter = null;
-            let maxCount = 0;
-            
-            for (const letter of predictionHistory) {
-                counts[letter] = (counts[letter] || 0) + 1;
-                if (counts[letter] > maxCount) {
-                    maxCount = counts[letter];
-                    maxLetter = letter;
-                }
-            }
-            
-            lastPredictions = results;
-            return maxLetter;
-        }
-        
-        lastPredictions = results;
-        return null;
-        
-    } catch (error) {
-        console.error("PalmSpeak: Error processing frame:", error);
-        return null;
-    }
-}
-
-// Flag to track if the script has announced itself as ready
-let hasAnnouncedReady = false;
-
-// Function to recursively search for video elements in shadow roots
-function findVideoInShadowRoot(root) {
-    let videos = [];
-    if (!root) return videos;
-
-    const children = root.querySelectorAll("*");
-    for (const child of children) {
-        if (child.tagName.toLowerCase() === "video") {
-            videos.push(child);
-        } else if (child.shadowRoot) {
-            videos = videos.concat(findVideoInShadowRoot(child.shadowRoot));
-        }
-    }
-    return videos;
-}
-
-// Storage for captured frames
-let capturedFrames = [];
-let isCapturing = false;
-let captureInterval;
-let activeVideoElement = null;
-const FRAME_RATE = 10; // 10 frames per second
-
-// Main function to detect video elements dynamically
-function detectVideoElements() {
-    console.log("PalmSpeak: Searching for video elements...");
-    
-    const observer = new MutationObserver((mutations) => {
-        const videoElements = findVideoInShadowRoot(document);
-        if (videoElements.length > 0) {
-            console.log("PalmSpeak: Video elements detected:", videoElements);
-            
-            // Store the first video element for later use
-            activeVideoElement = videoElements[0];
-            
-            // Mark ourselves as fully ready since we found a video
-            if (!hasAnnouncedReady) {
-                announceContentScriptReady();
-            }
-            
-            // Just disconnect the observer once we found the video
-            observer.disconnect();
-        }
+    // Request user permission to capture the screen
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        cursor: "never",
+        displaySurface: "window"
+      },
+      audio: false
     });
-
-    observer.observe(document, { childList: true, subtree: true });
     
-    // Also check immediately in case videos already exist
-    const videoElements = findVideoInShadowRoot(document);
-    if (videoElements.length > 0) {
-        console.log("PalmSpeak: Video elements found immediately:", videoElements);
-        activeVideoElement = videoElements[0];
-        
-        // Mark ourselves as fully ready
-        if (!hasAnnouncedReady) {
-            announceContentScriptReady();
-        }
-        
-        observer.disconnect();
-    }
+    captureStream = stream;
+    
+    // Create a video element to process the stream
+    videoElement = document.createElement('video');
+    videoElement.srcObject = stream;
+    videoElement.muted = true;
+    videoElement.style.display = 'none';
+    document.body.appendChild(videoElement);
+    
+    await videoElement.play();
+    
+    updateStatus("Screen capture started");
+    
+    // Start capturing frames
+    captureInterval = setInterval(captureVideoFrame, FRAME_INTERVAL);
+    
+    // Handle stream ending
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+      stopScreenCapture();
+      updateStatus("Screen sharing ended");
+      isRecognizing = false;
+      toggleButton.textContent = "Start Recognition";
+      toggleButton.classList.remove('active');
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error("PalmSpeak: Error starting screen capture:", error);
+    updateStatus("Error: " + error.message);
+    return { success: false, error: error.message };
+  }
 }
 
-// Function to announce that the content script is loaded and ready
-function announceContentScriptReady() {
-    if (hasAnnouncedReady) return;
+// Capture a frame from the video stream
+function captureVideoFrame() {
+  if (!videoElement || !isRecognizing) return;
+  
+  try {
+    // Create a canvas to capture the current frame
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
     
-    hasAnnouncedReady = true;
-    console.log("PalmSpeak: Content script announcing itself as ready");
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
     
+    // Convert to data URL and process
+    const frameData = canvas.toDataURL('image/jpeg', 0.7);
+    processFrame(frameData);
+  } catch (error) {
+    console.error("PalmSpeak: Error capturing frame:", error);
+  }
+}
+
+// Stop screen capture
+function stopScreenCapture() {
+  if (captureInterval) {
+    clearInterval(captureInterval);
+    captureInterval = null;
+  }
+  
+  if (captureStream) {
+    captureStream.getTracks().forEach(track => track.stop());
+    captureStream = null;
+  }
+  
+  if (videoElement) {
+    videoElement.srcObject = null;
+    if (videoElement.parentNode) {
+      videoElement.parentNode.removeChild(videoElement);
+    }
+    videoElement = null;
+  }
+  
+  console.log("PalmSpeak: Screen capture stopped");
+}
+
+// Process a captured frame by sending to the Flask API
+async function processFrame(frameData) {
+  if (!isRecognizing) return;
+  
+  try {
+    // Check if API is available by trying to reach the health endpoint first
+    let healthCheckResponse;
     try {
-        chrome.runtime.sendMessage({
-            action: "contentScriptReady",
-            url: window.location.href
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                console.error("Error announcing ready:", chrome.runtime.lastError.message);
-                // If we can't announce, try again in a moment
-                setTimeout(announceContentScriptReady, 1000);
-                hasAnnouncedReady = false;
-            } else {
-                console.log("PalmSpeak: Background script acknowledged:", response);
-            }
-        });
-    } catch (e) {
-        console.error("Exception announcing ready:", e);
-        // If we encounter an exception, try again in a moment
-        setTimeout(announceContentScriptReady, 1000);
-        hasAnnouncedReady = false;
+      healthCheckResponse = await fetch('http://127.0.0.1:5000/health', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!healthCheckResponse.ok) {
+        throw new Error(`API health check failed with status ${healthCheckResponse.status}`);
+      }
+    } catch (error) {
+      console.error("PalmSpeak: API Health Check Failed:", error);
+      updateStatus("API unavailable. Is the Flask server running?");
+      return;
     }
+    
+    // Send frame to API for prediction
+    const response = await fetch('http://127.0.0.1:5000/predict', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: frameData })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+    
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    
+    // Update letter history for smoothing
+    letterHistory.push(result.letter);
+    if (letterHistory.length > MAX_HISTORY) {
+      letterHistory.shift();
+    }
+    
+    // Use majority vote for current prediction
+    const counts = {};
+    let maxCount = 0;
+    let majorityLetter = result.letter;
+    
+    for (const letter of letterHistory) {
+      counts[letter] = (counts[letter] || 0) + 1;
+      if (counts[letter] > maxCount) {
+        maxCount = counts[letter];
+        majorityLetter = letter;
+      }
+    }
+    
+    // Update UI with prediction
+    if (result.confidence > 0.65) {
+      updatePrediction(majorityLetter, result.confidence);
+    }
+    
+  } catch (error) {
+    console.error("PalmSpeak: Error processing frame:", error);
+    updateStatus("API Error: " + error.message);
+  }
 }
 
-// Function to start continuous frame capture
-function startContinuousCapture() {
-    if (isCapturing) return;
+// Update prediction display
+function updatePrediction(letter, confidence) {
+  if (!predictionElement) return;
+  
+  predictionElement.textContent = `Detected: ${letter} (${Math.round(confidence * 100)}%)`;
+  predictionElement.classList.add('flash');
+  
+  // Remove flash animation after it completes
+  setTimeout(() => {
+    predictionElement.classList.remove('flash');
+  }, 500);
+  
+  // If this is a special character, handle it
+  if (letter === 'space') {
+    addToTranslatedText(' ');
+  } else if (letter === 'del') {
+    removeLastCharacter();
+  } else if (letter !== 'nothing') {
+    addToTranslatedText(letter);
+  }
+}
+
+// Add a letter to the translated text
+function addToTranslatedText(letter) {
+  const textElement = document.getElementById('palmspeak-text');
+  if (!textElement) return;
+  
+  // Check if the last character is the same (avoid duplicates)
+  if (translatedText.length === 0 || translatedText.slice(-1) !== letter || letter === ' ') {
+    translatedText += letter;
+    textElement.textContent = translatedText;
+  }
+}
+
+// Remove the last character from the translated text
+function removeLastCharacter() {
+  const textElement = document.getElementById('palmspeak-text');
+  if (!textElement) return;
+  
+  if (translatedText.length > 0) {
+    translatedText = translatedText.slice(0, -1);
+    textElement.textContent = translatedText;
+  }
+}
+
+// Update status message
+function updateStatus(message) {
+  if (predictionElement) {
+    predictionElement.textContent = message;
+  }
+}
+
+// Toggle recognition on/off
+async function toggleRecognition() {
+  if (isRecognizing) {
+    // Stop recognition
+    isRecognizing = false;
+    updateStatus("Recognition stopped");
+    toggleButton.textContent = "Start Recognition";
+    toggleButton.classList.remove('active');
     
-    // Make sure the model is loaded
-    if (!isModelLoaded) {
-        loadASLModel().then(success => {
-            if (success) {
-                console.log("PalmSpeak: Model loaded, ready for predictions");
-            } else {
-                console.error("PalmSpeak: Failed to load model, continuing without ASL recognition");
-            }
+    // Stop capture
+    stopScreenCapture();
+    chrome.runtime.sendMessage({ action: "stopCapture" });
+  } else {
+    // Start recognition
+    updateStatus("Starting recognition...");
+    toggleButton.textContent = "Stop Recognition";
+    toggleButton.classList.add('active');
+    
+    // Clear the text
+    const textElement = document.getElementById('palmspeak-text');
+    if (textElement) textElement.textContent = '';
+    translatedText = '';
+    
+    // Reset letter history
+    letterHistory = [];
+    
+    // Check API connection
+    try {
+      const healthResponse = await fetch('http://127.0.0.1:5000/health');
+      if (!healthResponse.ok) {
+        throw new Error(`API health check failed with status ${healthResponse.status}`);
+      }
+      
+      const healthData = await healthResponse.json();
+      if (!healthData.model_loaded) {
+        throw new Error("Model not loaded on the server side");
+      }
+    } catch (error) {
+      updateStatus("API Error: " + error.message);
+      toggleButton.textContent = "Start Recognition";
+      toggleButton.classList.remove('active');
+      return;
+    }
+    
+    // Start capture via background script to coordinate
+    chrome.runtime.sendMessage({ action: "startCapture" }, (response) => {
+      if (!response || !response.success) {
+        updateStatus("Failed to start: " + (response?.error || "Unknown error"));
+        toggleButton.textContent = "Start Recognition";
+        toggleButton.classList.remove('active');
+      } else {
+        isRecognizing = true;
+      }
+    });
+  }
+}
+
+// Set up message listeners for background script communication
+function setupMessageListeners() {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("PalmSpeak content script received message:", message.action);
+    
+    if (message.action === "startDisplayCapture") {
+      startScreenCapture().then(sendResponse);
+      return true; // Keep channel open for async response
+    }
+    
+    if (message.action === "stopDisplayCapture") {
+      stopScreenCapture();
+      sendResponse({ success: true });
+    }
+    
+    if (message.action === "getModelStatus") {
+      // Check API connection
+      fetch('http://127.0.0.1:5000/health')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`API health check failed with status ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          sendResponse({ modelLoaded: data.model_loaded });
+        })
+        .catch(error => {
+          console.error("PalmSpeak: API Health Check Failed:", error);
+          sendResponse({ modelLoaded: false, error: error.message });
         });
+      return true; // Keep channel open for async response
     }
-    if (isCapturing) return;
-    
-    // Find video element if we don't have one yet
-    if (!activeVideoElement) {
-        const videoElements = findVideoInShadowRoot(document);
-        if (videoElements.length > 0) {
-            activeVideoElement = videoElements[0];
-        } else {
-            console.error("PalmSpeak: No video element found to capture");
-            return false;
-        }
-    }
-    
-    isCapturing = true;
-    capturedFrames = []; // Reset frames array
-    
-    console.log("PalmSpeak: Starting continuous frame capture at " + FRAME_RATE + " fps");
-    
-    // Create a capture interval at specified frame rate
-    captureInterval = setInterval(() => {
-        captureFrame(activeVideoElement);
-    }, 1000 / FRAME_RATE);
     
     return true;
+  });
 }
 
-// Function to capture a single frame from the video element
-function captureFrame(videoElement) {
-    if (!videoElement || videoElement.paused || videoElement.ended) {
-        return;
-    }
-    
-    try {
-        const canvas = document.createElement("canvas");
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
+// Initialize on load
+window.addEventListener('load', initialize);
 
-        const context = canvas.getContext("2d");
-        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-        const imageData = canvas.toDataURL("image/png");
-        
-        // Store the frame
-        const frameInfo = {
-            data: imageData,
-            timestamp: new Date().toISOString()
-        };
-        
-        // Process with ASL model if enabled
-        chrome.storage.local.get(['aslEnabled'], async (result) => {
-            if (result.aslEnabled) {
-                const letter = await processFrameWithASLModel(imageData);
-                if (letter) {
-                    frameInfo.aslLetter = letter;
-                    console.log("PalmSpeak: ASL letter detected:", letter);
-                    
-                    // Here you could send the letter to your UI or accumulate into words
-                    // For example, create a floating overlay on the page
-                    displayDetectedLetter(letter);
-                }
-            }
-            
-            capturedFrames.push(frameInfo);
-            console.log("PalmSpeak: Frame captured, total frames:", capturedFrames.length);
-        });
-    } catch (e) {
-        console.error("Error capturing frame:", e);
-    }
-}
-
-
-// Function to display detected letters in an overlay
-function displayDetectedLetter(letter) {
-    // Check if overlay exists, create it if not
-    let overlay = document.getElementById('palmspeak-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'palmspeak-overlay';
-        overlay.style.position = 'fixed';
-        overlay.style.bottom = '20px';
-        overlay.style.left = '20px';
-        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        overlay.style.color = 'white';
-        overlay.style.padding = '10px 20px';
-        overlay.style.borderRadius = '5px';
-        overlay.style.zIndex = '9999';
-        overlay.style.fontSize = '24px';
-        overlay.style.fontFamily = 'Arial, sans-serif';
-        document.body.appendChild(overlay);
-        
-        // Also create a text accumulation area
-        const textArea = document.createElement('div');
-        textArea.id = 'palmspeak-text';
-        textArea.style.marginTop = '10px';
-        textArea.style.fontSize = '16px';
-        overlay.appendChild(textArea);
-    }
-    
-    // Update letter display
-    overlay.firstChild.textContent = `Detected: ${letter}`;
-    
-    // Accumulate letters into words
-    const textArea = document.getElementById('palmspeak-text');
-    if (!textArea.textContent) {
-        textArea.textContent = letter;
-    } else {
-        // Simple space handling - if we detect the same letter repeatedly,
-        // we won't add it multiple times
-        const lastChar = textArea.textContent.charAt(textArea.textContent.length - 1);
-        if (lastChar !== letter) {
-            // Special handling for specific gestures could go here
-            // For example, a particular sign might indicate space or backspace
-            textArea.textContent += letter;
-        }
-    }
-}
-
-// Function to stop capture and prepare download
-function stopCapture() {
-    if (!isCapturing) return 0;
-    
-    clearInterval(captureInterval);
-    isCapturing = false;
-    console.log(`PalmSpeak: Capture stopped. ${capturedFrames.length} frames captured.`);
-    
-    // Prepare download of all captured frames
-    if (capturedFrames.length > 0) {
-        prepareFramesDownload();
-        return capturedFrames.length;
-    }
-    
-    return 0;
-}
-
-// Function to prepare frames for download
-function prepareFramesDownload() {
-    // Create a zip file containing all frames
-    // For this example, we'll use a simple JSON blob
-    
-    const framesData = {
-        sessionInfo: {
-            frameCount: capturedFrames.length,
-            captureDate: new Date().toISOString(),
-            frameRate: FRAME_RATE
-        },
-        frames: capturedFrames
-    };
-    
-    // Create a JSON blob
-    const jsonBlob = new Blob([JSON.stringify(framesData)], { type: 'application/json' });
-    const url = URL.createObjectURL(jsonBlob);
-    
-    // Trigger download
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadFile(url, `palmspeak_session_${timestamp}.json`);
-    
-    // Clear memory
-    capturedFrames = [];
-}
-
-// Function to download a file from a blob URL
-function downloadFile(url, fileName) {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
-
-// Listen for messages from the extension
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("PalmSpeak: Content script received message:", message);
-    
-    try {
-        if (message.action === "startCapture") {
-            const success = startContinuousCapture();
-            sendResponse({
-                status: success ? "Capture started" : "Failed to start capture", 
-                success: success
-            });
-        } else if (message.action === "stopCapture") {
-            const frameCount = stopCapture();
-            sendResponse({
-                status: "Capture stopped", 
-                frameCount: frameCount,
-                success: true
-            });
-        }
-    } catch (e) {
-        console.error("PalmSpeak: Error handling message:", e);
-        sendResponse({status: "Error: " + e.message, error: true});
-    }
-    
-    return true; // Keep the message channel open for async response
-});
-
-// Announce that the content script is loaded
-console.log("PalmSpeak: Content script loaded");
-
-// First, announce we're basically ready
-setTimeout(announceContentScriptReady, 500);
-
-// Then start looking for video elements
-window.addEventListener("load", () => {
-    console.log("PalmSpeak: Page loaded, starting video detection");
-    detectVideoElements();
-});
-
-// Also detect videos if the script is injected after page load
+// Also initialize if page is already loaded
 if (document.readyState === "complete") {
-    console.log("PalmSpeak: Page already loaded, starting video detection");
-    detectVideoElements();
+  initialize();
 }
