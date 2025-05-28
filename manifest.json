@@ -1,31 +1,28 @@
 {
   "manifest_version": 3,
   "name": "PalmSpeak ASL Translator",
-  "description": "Real-time ASL sign recognition for Microsoft Teams and Zoom video calls",
-  "version": "1.0",
+  "description": "Real-time ASL sign recognition for video calls and meetings",
+  "version": "1.2",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "tabs",
+    "desktopCapture"
   ],
   "host_permissions": [
-    "https://teams.live.com/*",
-    "https://teams.microsoft.com/*",
-    "https://*.zoom.us/*",
-    "https://zoom.us/*",
     "http://127.0.0.1:5000/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [
+ "content_scripts": [
     {
       "matches": [
+        "https://*.teams.microsoft.com/*",
         "https://teams.live.com/*",
-        "https://teams.microsoft.com/*",
         "https://*.zoom.us/*",
-        "https://zoom.us/*",
-        "https://app.zoom.us/*"
+        "https://zoom.us/j/*"
       ],
       "js": ["content.js"],
       "css": ["overlay.css"],
@@ -44,16 +41,5 @@
     "16": "images/icon16.png",
     "48": "images/icon48.png",
     "128": "images/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "images/*"
-      ],
-      "matches": ["<all_urls>"]
-    }
-  ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }

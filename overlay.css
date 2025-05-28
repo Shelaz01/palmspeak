@@ -1,56 +1,71 @@
-/* PalmSpeak ASL Translator overlay styles */
+/* PalmSpeak ASL Translator overlay styles - updated version */
 
 #palmspeak-overlay {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  width: 300px;
+  width: 320px;
   z-index: 9999;
   opacity: 0.9;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
 #palmspeak-overlay:hover {
   opacity: 1;
+  transform: translateY(-5px);
 }
 
 .palmspeak-container {
-  background-color: rgba(30, 30, 30, 0.9);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background-color: rgba(25, 25, 30, 0.85);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-  font-family: Arial, sans-serif;
   color: white;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .palmspeak-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px;
-  background-color: rgba(15, 15, 15, 0.8);
+  padding: 12px 16px;
+  background-color: rgba(15, 15, 20, 0.8);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .palmspeak-header h3 {
   margin: 0;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  user-select: none;
 }
 
 .palmspeak-button {
   background-color: #2196F3;
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
+  outline: none;
 }
 
 .palmspeak-button:hover {
   background-color: #0d8aee;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.palmspeak-button:active {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
 .palmspeak-button.active {
@@ -62,84 +77,120 @@
 }
 
 .palmspeak-content {
-  padding: 15px;
+  padding: 16px;
 }
 
 .palmspeak-prediction {
   font-size: 18px;
-  margin-bottom: 10px;
-  padding: 10px;
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background-color: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
   font-weight: bold;
   text-align: center;
+  transition: background-color 0.3s ease;
+  letter-spacing: 0.5px;
+}
+
+.palmspeak-label {
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
 }
 
 .palmspeak-text {
-  min-height: 60px;
-  padding: 10px;
+  min-height: 80px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 12px;
   background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 16px;
   word-wrap: break-word;
   line-height: 1.5;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Minimize button and state */
-.palmspeak-minimize {
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.7);
-  background: none;
-  border: none;
-  font-size: 16px;
-  padding: 0 5px;
-  margin-left: 5px;
+.palmspeak-text::-webkit-scrollbar {
+  width: 6px;
 }
 
-.palmspeak-minimize:hover {
-  color: white;
+.palmspeak-text::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
 }
 
-.palmspeak-minimized .palmspeak-content {
-  display: none;
+.palmspeak-text::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
 }
 
-/* Platform-specific adjustments */
-/* For Teams */
-.teams-frame #palmspeak-overlay {
-  bottom: 80px; /* Avoid overlap with Teams controls */
-}
-
-/* For Zoom */
-.zoom-frame #palmspeak-overlay {
-  bottom: 70px; /* Avoid overlap with Zoom controls */
-}
-
-/* Responsive adjustments for different screen sizes */
+/* Responsive adjustments */
 @media (max-width: 768px) {
   #palmspeak-overlay {
-    width: 250px;
-    bottom: 10px;
-    right: 10px;
+    width: 280px;
+    bottom: 15px;
+    right: 15px;
   }
   
   .palmspeak-prediction {
     font-size: 16px;
-    padding: 8px;
+    padding: 10px;
   }
   
   .palmspeak-text {
-    min-height: 50px;
+    min-height: 60px;
+    max-height: 120px;
     font-size: 14px;
   }
 }
 
-/* Animation for new detection */
+/* Animations for new detection */
 @keyframes flash {
-  0% { background-color: rgba(33, 150, 243, 0.4); }
-  100% { background-color: rgba(0, 0, 0, 0.2); }
+  0% { background-color: rgba(33, 150, 243, 0.5); }
+  100% { background-color: rgba(0, 0, 0, 0.25); }
 }
 
 .palmspeak-prediction.flash {
-  animation: flash 0.5s ease-out;
+  animation: flash 0.7s ease-out;
+}
+
+/* Draggable handle */
+.palmspeak-drag-handle {
+  cursor: move;
+  user-select: none;
+}
+
+/* Special styles for different platforms */
+.zoom-meeting #palmspeak-overlay {
+  right: 80px;
+  bottom: 120px;
+}
+
+.teams-meeting #palmspeak-overlay {
+  right: 80px;
+  bottom: 100px;
+}
+
+/* Additional spacing for control buttons */
+.palmspeak-controls {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.palmspeak-control-btn {
+  background-color: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.palmspeak-control-btn:hover {
+  background-color: rgba(255, 255, 255, 0.25);
 }

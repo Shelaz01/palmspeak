@@ -1,4 +1,4 @@
-# app.py - Flask API for ASL recognition
+# app.py - Flask API for ASL recognition (corrected version with prediction smoothing)
 from flask import Flask, request, jsonify
 import numpy as np
 from tensorflow.keras.models import load_model
@@ -9,133 +9,190 @@ from flask_cors import CORS
 import logging
 import traceback
 import os
+import cv2
+import mediapipe as mp
+from collections import deque, Counter
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})  # Configure CORS to allow requests from extension
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
+logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('palmspeak-api')
 
-# Global variable to store the model
+# Global variables
 model = None
 model_loaded = False
-
-# ASL alphabet class labels
 ASL_CLASSES = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
     'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
     'del', 'nothing', 'space'
 ]
 
+# Prediction buffer to store recent predictions
+prediction_buffer = deque(maxlen=10)
+# Minimum confidence threshold for prediction to be considered valid
+CONFIDENCE_THRESHOLD = 0.3
+
+# Initialize MediaPipe Hands
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1)
+
 def load_keras_model():
     """Load the Keras model on startup"""
     global model, model_loaded
     try:
-        # Update this path to where your Keras model is stored
         model_path = 'alphabet_keras/asl_alphabet_model.h5'
         
-        # Check if model file exists
         if not os.path.exists(model_path):
-            logger.error(f"Model file not found at path: {model_path}")
+            logger.error(f"Model file not found: {model_path}")
             return False
             
         model = load_model(model_path)
         model_loaded = True
-        logger.info("ASL model loaded successfully!")
+        logger.info("Model loaded successfully. Input shape: %s", model.input_shape)
         return True
     except Exception as e:
-        logger.error(f"Failed to load model: {str(e)}")
+        logger.error(f"Model loading failed: {str(e)}")
         traceback.print_exc()
-        model_loaded = False
         return False
+
+def extract_hand_landmarks(image):
+    """Extract hand landmarks using MediaPipe"""
+    try:
+        # Convert to RGB (MediaPipe requires RGB)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = hands.process(image_rgb)
+        
+        if results.multi_hand_landmarks:
+            landmarks = []
+            for hand_landmarks in results.multi_hand_landmarks:
+                for landmark in hand_landmarks.landmark:
+                    landmarks.extend([landmark.x, landmark.y, landmark.z])
+            return np.array(landmarks)
+        return None
+    except Exception as e:
+        logger.error(f"Landmark extraction error: {str(e)}")
+        return None
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """Endpoint to process an image and return ASL letter prediction"""
-    global model, model_loaded
+    """Endpoint to process an image and return ASL prediction"""
+    global model, model_loaded, prediction_buffer
     
-    # Check if model is loaded
     if not model_loaded:
         if not load_keras_model():
-            return jsonify({
-                'error': 'Model not loaded. Check server logs.'
-            }), 500
-    
+            return jsonify({'error': 'Model not loaded'}), 500
+
     try:
-        # Get base64 image from request
         data = request.json
         if not data or 'image' not in data:
-            return jsonify({'error': 'No image data provided'}), 400
-        
-        # Skip the header part of the data URL
+            return jsonify({'error': 'No image data'}), 400
+
+        # Extract image data
         image_data = data['image'].split(',')[1] if ',' in data['image'] else data['image']
         
-        # Decode base64 image
         try:
+            # Decode and process image
             image_bytes = base64.b64decode(image_data)
-            img = Image.open(io.BytesIO(image_bytes))
-        except Exception as e:
-            logger.error(f"Error decoding image: {str(e)}")
-            return jsonify({'error': 'Invalid image data'}), 400
-        
-        # Preprocess image
-        img = img.resize((64, 64))
-        img_array = np.array(img) / 255.0
-        
-        # Handle grayscale images
-        if len(img_array.shape) == 2:
-            img_array = np.stack((img_array,) * 3, axis=-1)
-        # Handle RGBA images
-        elif img_array.shape[2] == 4:
-            img_array = img_array[:, :, :3]
+            img_array = np.frombuffer(image_bytes, dtype=np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             
-        img_array = np.expand_dims(img_array, axis=0)
-        
-        # Make prediction
-        predictions = model.predict(img_array)
-        predicted_class = ASL_CLASSES[np.argmax(predictions[0])]
-        confidence = float(np.max(predictions[0]))
-        
-        logger.info(f"Prediction: {predicted_class} with confidence {confidence:.4f}")
-        
-        return jsonify({
-            'letter': predicted_class,
-            'confidence': confidence
-        })
+            if img is None:
+                raise ValueError("Failed to decode image")
+            
+            # Extract hand landmarks
+            landmarks = extract_hand_landmarks(img)
+            
+            if landmarks is None:
+                prediction_buffer.append(('nothing', 1.0))
+                most_common = get_most_common_prediction()
+                return jsonify({
+                    'letter': most_common[0],
+                    'confidence': most_common[1],
+                    'message': 'No hand detected',
+                    'buffer_size': len(prediction_buffer)
+                })
+                
+            # Reshape and normalize landmarks for the model
+            landmarks = landmarks.reshape(1, 63)  # 21 landmarks × 3 coordinates
+            landmarks = landmarks / np.max(landmarks)  # Normalize same as in training
+
+            # Make prediction
+            predictions = model.predict(landmarks)
+            predicted_class_index = np.argmax(predictions[0])
+            predicted_class = ASL_CLASSES[predicted_class_index]
+            confidence = float(np.max(predictions[0]))
+            
+            # Add to prediction buffer if confidence is above threshold
+            if confidence > CONFIDENCE_THRESHOLD:
+                prediction_buffer.append((predicted_class, confidence))
+            
+            # Get most common prediction from buffer
+            most_common = get_most_common_prediction()
+            
+            logger.info(f"Current: {predicted_class} ({confidence:.2%}), Most common: {most_common[0]} ({most_common[1]:.2%})")
+            
+            return jsonify({
+                'letter': most_common[0],
+                'raw_letter': predicted_class,
+                'confidence': most_common[1],
+                'raw_confidence': confidence,
+                'buffer_size': len(prediction_buffer)
+            })
+
+        except Exception as e:
+            logger.error(f"Image processing error: {str(e)}")
+            traceback.print_exc()
+            return jsonify({'error': 'Invalid image format'}), 400
+
     except Exception as e:
-        logger.error(f"Error in prediction: {str(e)}")
+        logger.error(f"Prediction error: {str(e)}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Endpoint to check API health and model status"""
-    global model_loaded
-    if not model_loaded:
-        # Try to load the model if it's not loaded yet
-        load_keras_model()
-        
+def get_most_common_prediction():
+    """Return the most common prediction from the buffer"""
+    if not prediction_buffer:
+        return ('nothing', 1.0)
+    
+    # Count the occurrences of each prediction
+    predictions = [item[0] for item in prediction_buffer]
+    counts = Counter(predictions)
+    most_common = counts.most_common(1)[0][0]
+    
+    # Calculate average confidence for the most common prediction
+    confidences = [item[1] for item in prediction_buffer if item[0] == most_common]
+    avg_confidence = sum(confidences) / len(confidences)
+    
+    return (most_common, avg_confidence)
+
+@app.route('/clear-buffer', methods=['POST'])
+def clear_buffer():
+    """Endpoint to clear the prediction buffer (useful when changing signs)"""
+    global prediction_buffer
+    prediction_buffer.clear()
     return jsonify({
-        'status': 'healthy',
-        'model_loaded': model_loaded
+        'status': 'success',
+        'message': 'Prediction buffer cleared'
     })
 
-# Load model when app starts
-load_keras_model()
+@app.route('/health', methods=['GET'])
+def health_check():
+    """API health endpoint"""
+    if not model_loaded:
+        load_keras_model()
+    return jsonify({
+        'status': 'healthy' if model_loaded else 'unhealthy',
+        'model_loaded': model_loaded,
+        'buffer_size': len(prediction_buffer)
+    })
 
 if __name__ == '__main__':
-    # Start the Flask server
+    load_keras_model()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-    
-    # Output a helpful message
     print("=" * 80)
-    print("PalmSpeak API Server")
-    print("=" * 80)
-    print(f"API is running at: http://127.0.0.1:{port}")
-    print("API endpoints:")
-    print(f"- Health check: http://127.0.0.1:{port}/health")
-    print(f"- Prediction: http://127.0.0.1:{port}/predict (POST)")
+    print(f"ASL Recognition API running on port {port}")
     print("=" * 80)
