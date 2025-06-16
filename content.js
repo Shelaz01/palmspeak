@@ -10,8 +10,11 @@ let videoElement = null;
 let captureInterval = null;
 let letterHistory = [];
 let translatedText = "";
+let lastDetectedLetter = null; // Track the last detected letter
+let letterConfirmationCount = 0; // Count how many times we've seen the same letter
 const MAX_HISTORY = 5; // Number of predictions to keep for smoothing
-const FRAME_INTERVAL = 200; // Process frames every 200ms (5 FPS)
+const FRAME_INTERVAL = 500; // Process frames every 1000ms (1 FPS)
+const CONFIRMATION_THRESHOLD = 3; // How many times we need to see a letter before confirming it
 
 // Initialize content script
 function initialize() {
@@ -40,7 +43,7 @@ function createOverlay() {
   overlay.innerHTML = `
     <div class="palmspeak-container">
       <div class="palmspeak-header">
-        <h3>PalmSpeak ASL Translator</h3>
+        <h3>PalmSpeak Sign-Language Translator</h3>
         <button id="palmspeak-toggle" class="palmspeak-button">Start</button>
       </div>
       <div class="palmspeak-content">
@@ -137,6 +140,8 @@ function startRecognition(stream) {
   
   // Reset translation state
   letterHistory = [];
+  lastDetectedLetter = null;
+  letterConfirmationCount = 0;
   
   // Create video element for stream
   videoElement = document.createElement('video');
@@ -229,6 +234,10 @@ function stopRecognition() {
     predictionElement.textContent = "Recognition stopped";
   }
   
+  // Reset state
+  lastDetectedLetter = null;
+  letterConfirmationCount = 0;
+  
   // Update button state if needed
   const toggleButton = document.getElementById('palmspeak-toggle');
   if (toggleButton) {
@@ -256,25 +265,39 @@ function updatePrediction(letter, confidence) {
     }, 300);
   }
 
-  // Update letter history
-  letterHistory.push(letter);
-  if (letterHistory.length > MAX_HISTORY) {
-    letterHistory.shift();
-  }
-
-  // Basic translation logic with smoothing
-  if (letterHistory.length === MAX_HISTORY) {
-    const mostFrequentLetter = findMostFrequent(letterHistory);
+  // Only process if confidence is high enough to avoid noise
+  if (confidence >= 0.6) {
+    // Check if this is the same letter as before
+    if (letter === lastDetectedLetter) {
+      letterConfirmationCount++;
+    } else {
+      // New letter detected, reset confirmation count
+      letterConfirmationCount = 1;
+      lastDetectedLetter = letter;
+    }
     
-    // Only process if confidence is high enough to avoid noise
-    if (confidence >= 0.6) {
-      if (mostFrequentLetter !== 'nothing') {
-        if (mostFrequentLetter === 'space') {
+    // Only add to translation if we've confirmed this letter enough times
+    // and it's different from the last letter we added to translation
+    if (letterConfirmationCount >= CONFIRMATION_THRESHOLD) {
+      // Only add if it's not 'nothing' and we haven't already added this letter
+      if (letter !== 'nothing') {
+        if (letter === 'space') {
           translatedText += " ";
-        } else if (mostFrequentLetter === 'del') {
+          // Reset so we can add more spaces if needed
+          letterConfirmationCount = 0;
+          lastDetectedLetter = null;
+        } else if (letter === 'del') {
           translatedText = translatedText.slice(0, -1);
+          // Reset so we can delete more characters if needed
+          letterConfirmationCount = 0;
+          lastDetectedLetter = null;
         } else {
-          translatedText += mostFrequentLetter;
+          // Regular letter - only add if it's different from the last character
+          const lastChar = translatedText.slice(-1);
+          if (lastChar !== letter) {
+            translatedText += letter;
+            console.log(`Added letter: ${letter} to translation: ${translatedText}`);
+          }
         }
         
         if (translationElement) {
@@ -282,25 +305,11 @@ function updatePrediction(letter, confidence) {
         }
       }
     }
+  } else {
+    // Low confidence, reset tracking
+    letterConfirmationCount = 0;
+    lastDetectedLetter = null;
   }
-}
-
-// Helper function to find most frequent letter in history
-function findMostFrequent(arr) {
-  const frequencyMap = {};
-  let maxFrequency = 0;
-  let mostFrequentItem = '';
-
-  for (const item of arr) {
-    frequencyMap[item] = (frequencyMap[item] || 0) + 1;
-    if (frequencyMap[item] > maxFrequency) {
-      maxFrequency = frequencyMap[item];
-      mostFrequentItem = item;
-    }
-  }
-  
-  // Only return if it appears at least twice to reduce false positives
-  return maxFrequency >= 2 ? mostFrequentItem : 'nothing';
 }
 
 // Initialize on load
