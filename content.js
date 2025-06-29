@@ -12,13 +12,13 @@ let letterHistory = [];
 let translatedText = "";
 let lastDetectedLetter = null; // Track the last detected letter
 let letterConfirmationCount = 0; // Count how many times we've seen the same letter
+let isOverlayMinimized = false; // Track overlay state
 const MAX_HISTORY = 5; // Number of predictions to keep for smoothing
-const FRAME_INTERVAL = 500; // Process frames every 1000ms (1 FPS)
+const FRAME_INTERVAL = 500; // Process frames every 500ms
 const CONFIRMATION_THRESHOLD = 3; // How many times we need to see a letter before confirming it
 
 // Initialize content script
 function initialize() {
-  
   console.log("PalmSpeak: Content script initializing");
 
   // Create and inject overlay
@@ -30,7 +30,7 @@ function initialize() {
   console.log("PalmSpeak: Content script initialized successfully");
 }
 
-// Create and inject the UI overlay
+// Enhanced overlay creation with better accessibility
 function createOverlay() {
   // Remove existing overlay if it exists
   const existingOverlay = document.getElementById('palmspeak-overlay');
@@ -40,18 +40,24 @@ function createOverlay() {
   
   overlay = document.createElement('div');
   overlay.id = 'palmspeak-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', 'PalmSpeak Sign Language Translator');
   overlay.innerHTML = `
     <div class="palmspeak-container">
       <div class="palmspeak-header">
         <h3>PalmSpeak Sign-Language Translator</h3>
-        <button id="palmspeak-toggle" class="palmspeak-button">Start</button>
+        <div>
+          <button id="palmspeak-minimize" class="palmspeak-button minimize-button" title="Minimize overlay" aria-label="Minimize overlay">−</button>
+          <button id="palmspeak-clear" class="palmspeak-button" style="margin-right: 6px;" aria-label="Clear translation">Clear</button>
+          <button id="palmspeak-toggle" class="palmspeak-button" aria-label="Start recognition">Start</button>
+        </div>
       </div>
-      <div class="palmspeak-content">
-        <div id="palmspeak-prediction" class="palmspeak-prediction">...</div>
+      <div class="palmspeak-content" id="palmspeak-content">
+        <div id="palmspeak-prediction" class="palmspeak-prediction" aria-live="polite">...</div>
         <div class="palmspeak-text-display">
-            <div class="palmspeak-label">Translation:</div>
-            <div id="palmspeak-translation-text" class="palmspeak-text">No translation yet</div>
-         </div>
+          <div class="palmspeak-label">Translation:</div>
+          <div id="palmspeak-translation-text" class="palmspeak-text" aria-live="polite">No translation yet</div>
+        </div>
       </div>
     </div>
   `;
@@ -61,7 +67,16 @@ function createOverlay() {
   predictionElement = document.getElementById('palmspeak-prediction');
   translationElement = document.getElementById('palmspeak-translation-text');
   
-  // Add toggle button functionality
+  // Add event listeners with improved error handling
+  setupOverlayEventListeners();
+  
+  // Initially hide the overlay (will be shown when user clicks "Show Overlay" in popup)
+  overlay.style.display = 'none';
+}
+
+// Separate function for setting up event listeners
+function setupOverlayEventListeners() {
+  // Toggle button functionality
   const toggleButton = document.getElementById('palmspeak-toggle');
   if (toggleButton) {
     toggleButton.addEventListener('click', function() {
@@ -69,13 +84,119 @@ function createOverlay() {
         stopRecognition();
         toggleButton.textContent = 'Start';
         toggleButton.classList.remove('active');
+        toggleButton.setAttribute('aria-label', 'Start recognition');
       } else {
         // Tell background script to start capture
         chrome.runtime.sendMessage({ action: "startCapture" });
         toggleButton.textContent = 'Stop';
         toggleButton.classList.add('active');
+        toggleButton.setAttribute('aria-label', 'Stop recognition');
       }
     });
+  }
+
+  // Clear button functionality
+  const clearButton = document.getElementById('palmspeak-clear');
+  if (clearButton) {
+    clearButton.addEventListener('click', function () {
+      console.log("Clear button clicked");
+      translatedText = "";
+      if (translationElement) {
+        translationElement.textContent = "No translation yet";
+        console.log("Translation cleared");
+      }
+      // Also reset the prediction display
+      if (predictionElement) {
+        predictionElement.textContent = "...";
+      }
+      // Reset letter tracking
+      lastDetectedLetter = null;
+      letterConfirmationCount = 0;
+      letterHistory = [];
+      
+      // Provide user feedback
+      clearButton.style.backgroundColor = '#4CAF50';
+      setTimeout(() => {
+        clearButton.style.backgroundColor = '#757575';
+      }, 200);
+    });
+  }
+
+  // Minimize button functionality
+  const minimizeButton = document.getElementById('palmspeak-minimize');
+  if (minimizeButton) {
+    minimizeButton.addEventListener('click', function() {
+      toggleOverlayMinimize();
+    });
+  }
+
+  // Add keyboard shortcuts
+  document.addEventListener('keydown', function(e) {
+    // Only work if overlay is visible
+    if (overlay && overlay.style.display !== 'none') {
+      // Ctrl+Shift+M to minimize/restore
+      if (e.ctrlKey && e.shiftKey && e.key === 'M') {
+        e.preventDefault();
+        toggleOverlayMinimize();
+      }
+      // Ctrl+Shift+C to clear
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault();
+        if (clearButton) clearButton.click();
+      }
+    }
+  });
+}
+
+// Enhanced toggle overlay minimize with better state management
+function toggleOverlayMinimize() {
+  const content = document.getElementById('palmspeak-content');
+  const minimizeButton = document.getElementById('palmspeak-minimize');
+  const container = overlay.querySelector('.palmspeak-container');
+  
+  if (!isOverlayMinimized) {
+    // Minimize
+    content.style.display = 'none';
+    minimizeButton.textContent = '+';
+    minimizeButton.title = 'Restore overlay';
+    container.classList.add('minimized');
+    isOverlayMinimized = true;
+    
+    // Store the minimized state
+    chrome.storage.local.set({ overlayMinimized: true });
+  } else {
+    // Restore
+    content.style.display = 'block';
+    minimizeButton.textContent = '−';
+    minimizeButton.title = 'Minimize overlay';
+    container.classList.remove('minimized');
+    isOverlayMinimized = false;
+    
+    // Store the restored state
+    chrome.storage.local.set({ overlayMinimized: false });
+  }
+}
+
+// Enhanced show overlay with state restoration
+function showOverlay() {
+  if (overlay) {
+    overlay.style.display = 'block';
+    
+    // Restore previous minimize state
+    chrome.storage.local.get(['overlayMinimized'], (result) => {
+      if (result.overlayMinimized && !isOverlayMinimized) {
+        toggleOverlayMinimize();
+      } else if (!result.overlayMinimized && isOverlayMinimized) {
+        toggleOverlayMinimize();
+      }
+    });
+  }
+}
+
+// Hide overlay
+function hideOverlay() {
+  if (overlay) {
+    overlay.style.display = 'none';
   }
 }
 
@@ -83,6 +204,18 @@ function createOverlay() {
 function setupMessageListeners() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("PalmSpeak content script received message:", message.action);
+
+    if (message.action === "showOverlay") {
+      showOverlay();
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (message.action === "hideOverlay") {
+      hideOverlay();
+      sendResponse({ success: true });
+      return true;
+    }
 
     if (message.action === "startCapture") {
       // Get the streamId from the background script

@@ -1,9 +1,9 @@
-/* PalmSpeak ASL Translator overlay styles - updated version */
+/* PalmSpeak ASL Translator overlay styles - updated version (Bottom-Left) */
 
 #palmspeak-overlay {
   position: fixed;
   bottom: 20px;
-  right: 20px;
+  left: 20px;
   width: 320px;
   z-index: 9999;
   opacity: 0.9;
@@ -25,6 +25,13 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+/* Minimized state for container */
+.palmspeak-container.minimized {
+  width: 200px;
+  border-radius: 8px;
 }
 
 .palmspeak-header {
@@ -42,6 +49,14 @@
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   user-select: none;
+  flex: 1;
+}
+
+/* Button container for side-by-side layout */
+.palmspeak-header > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .palmspeak-button {
@@ -49,12 +64,14 @@
   color: white;
   border: none;
   border-radius: 6px;
-  padding: 6px 14px;
+  padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
+  min-width: 60px;
+  white-space: nowrap;
 }
 
 .palmspeak-button:hover {
@@ -76,8 +93,37 @@
   background-color: #e53935;
 }
 
+/* Minimize button specific styling */
+.minimize-button {
+  background-color: #FF9800 !important;
+  min-width: 30px !important;
+  padding: 8px 10px !important;
+  font-size: 16px !important;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.minimize-button:hover {
+  background-color: #F57C00 !important;
+}
+
+/* Clear button specific styling */
+#palmspeak-clear {
+  background-color: #757575;
+}
+
+#palmspeak-clear:hover {
+  background-color: #616161;
+}
+
 .palmspeak-content {
   padding: 16px;
+  transition: all 0.3s ease;
+}
+
+/* Hidden content when minimized */
+.palmspeak-content[style*="display: none"] {
+  display: none !important;
 }
 
 .palmspeak-prediction {
@@ -90,6 +136,10 @@
   text-align: center;
   transition: background-color 0.3s ease;
   letter-spacing: 0.5px;
+}
+
+.palmspeak-text-display {
+  margin-top: 12px;
 }
 
 .palmspeak-label {
@@ -131,14 +181,46 @@
   #palmspeak-overlay {
     width: 280px;
     bottom: 15px;
-    right: 15px;
+    left: 15px;
   }
-  
+
+  .palmspeak-container.minimized {
+    width: 180px;
+  }
+
+  .palmspeak-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .palmspeak-header h3 {
+    text-align: center;
+    margin-bottom: 5px;
+    font-size: 14px;
+  }
+
+  .palmspeak-header > div {
+    justify-content: center;
+  }
+
+  .palmspeak-button {
+    padding: 6px 12px;
+    font-size: 12px;
+    min-width: 50px;
+  }
+
+  .minimize-button {
+    min-width: 25px !important;
+    padding: 6px 8px !important;
+    font-size: 14px !important;
+  }
+
   .palmspeak-prediction {
     font-size: 16px;
     padding: 10px;
   }
-  
+
   .palmspeak-text {
     min-height: 60px;
     max-height: 120px;
@@ -164,12 +246,12 @@
 
 /* Special styles for different platforms */
 .zoom-meeting #palmspeak-overlay {
-  right: 80px;
+  left: 80px;
   bottom: 120px;
 }
 
 .teams-meeting #palmspeak-overlay {
-  right: 80px;
+  left: 80px;
   bottom: 100px;
 }
 
@@ -193,4 +275,23 @@
 
 .palmspeak-control-btn:hover {
   background-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Smooth transitions for minimize/restore */
+.palmspeak-container,
+.palmspeak-content {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Ensure proper layout when minimized */
+.palmspeak-container.minimized .palmspeak-header h3 {
+  font-size: 14px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Hover effects for minimized state */
+.palmspeak-container.minimized:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }

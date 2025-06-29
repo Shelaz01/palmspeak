@@ -89,6 +89,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true; // Keep message channel open for async response
   }
+  else if (message.action === "showOverlay") {
+    // Forward the show overlay message to the content script
+    if (activeTabId) {
+      chrome.tabs.sendMessage(activeTabId, { action: "showOverlay" }, (response) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse(response || { success: true });
+        }
+      });
+    } else {
+      // Get current active tab if we don't have it stored
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+          activeTabId = tabs[0].id;
+          chrome.tabs.sendMessage(activeTabId, { action: "showOverlay" }, (response) => {
+            if (chrome.runtime.lastError) {
+              sendResponse({ success: false, error: chrome.runtime.lastError.message });
+            } else {
+              sendResponse(response || { success: true });
+            }
+          });
+        } else {
+          sendResponse({ success: false, error: "No active tab found" });
+        }
+      });
+    }
+    return true; // Keep message channel open for async response
+  }
+  
   return false;
 });
 
@@ -98,9 +128,27 @@ chrome.action.onClicked.addListener((tab) => {
   activeTabId = tab.id;
 });
 
+// Handle tab updates to keep track of active tab
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  activeTabId = activeInfo.tabId;
+});
+
+// Handle tab removal - cleanup if it's our active tab
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === activeTabId) {
+    // Clean up if our active tab is closed
+    if (isCapturing) {
+      isCapturing = false;
+      captureStreamId = null;
+    }
+    activeTabId = null;
+  }
+});
+
 // Cleanup
 chrome.runtime.onSuspend.addListener(() => {
   console.log("Unloading extension, releasing resources");
   captureStreamId = null;
   isCapturing = false;
+  activeTabId = null;
 });

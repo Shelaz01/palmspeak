@@ -1,6 +1,7 @@
 // Popup script for PalmSpeak ASL Translator
 const startButton = document.getElementById('start-button');
 const stopButton = document.getElementById('stop-button');
+const showOverlayButton = document.getElementById('show-overlay-button');
 const statusText = document.getElementById('status-text');
 const modelStatus = document.getElementById('model-status');
 
@@ -115,10 +116,43 @@ async function stopRecognition() {
   }
 }
 
+// Show overlay in current tab
+async function showOverlay() {
+  try {
+    const tab = await getCurrentTab();
+    if (!tab) return;
+
+    // Send message to content script to show overlay
+    const response = await new Promise((resolve) => {
+      chrome.tabs.sendMessage(
+        tab.id,
+        { action: "showOverlay" },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({ error: chrome.runtime.lastError.message });
+          } else {
+            resolve(response || { success: true });
+          }
+        }
+      );
+    });
+
+    if (response?.success) {
+      updateStatus('Overlay shown');
+    } else {
+      throw new Error(response?.error || 'Failed to show overlay');
+    }
+  } catch (error) {
+    console.error('Show overlay failed:', error);
+    updateStatus(`Error: ${error.message}`);
+  }
+}
+
 // Initialize UI and checks
 document.addEventListener('DOMContentLoaded', async () => {
   startButton.addEventListener('click', startRecognition);
   stopButton.addEventListener('click', stopRecognition);
+  showOverlayButton.addEventListener('click', showOverlay);
 
   // Initial state
   startButton.disabled = true;

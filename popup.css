@@ -109,6 +109,14 @@ body {
   background-color: #d32f2f;
 }
 
+.action-button.overlay-button {
+  background-color: #FF9800;
+}
+
+.action-button.overlay-button:hover {
+  background-color: #F57C00;
+}
+
 .info-panel {
   background-color: #e3f2fd;
   padding: 12px;
